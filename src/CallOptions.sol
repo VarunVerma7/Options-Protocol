@@ -3,7 +3,6 @@ pragma solidity ^0.8.4;
 
 import "forge-std/Test.sol";
 
-
 interface IERC20 {
     /// @dev Emitted when `value` tokens are moved from one account (`from`) to another (`to`).
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -42,7 +41,6 @@ interface IERC20 {
     /// @notice Returns the decimals places of the token.
     function decimals() external view returns (uint8);
 }
-
 
 // call option: the right to buy an asset at a specific price
 
@@ -107,7 +105,7 @@ contract CallOptionsContract {
         require(block.timestamp <= option.expiration, "Option cannot be expired");
         option.purchased = true;
 
-        // send the option creator their premiumt
+        // send the option creator their premium:
         require(msg.value == 0.5 ether, "Pay up brah");
 
         (bool success,) = payable(seller).call{value: msg.value}("");
@@ -123,24 +121,33 @@ contract CallOptionsContract {
         require(block.timestamp <= options[optionSeller].expiration, "Expired");
         Option memory option = options[optionSeller];
 
+        // send the stable coin to the option creator
+        uint256 scaleFactor;
+        if (stableCoin == usdc) {
+            scaleFactor = 1e12;
+        } else if (stableCoin == usdt) {
+            scaleFactor = 1e10;
+        } else {
+            scaleFactor = 1e1; // DAI
+        }
+
         // send the money to the option creator, they have had to approve first
-        uint256 totalCostOfExercising = option.buyPerEthPrice * option.etherOfCall / 1e12;
-        console.log("Total cost of exercising scaled is ", totalCostOfExercising / 1e6);
+        uint256 totalCostOfExercising = option.buyPerEthPrice * option.etherOfCall / scaleFactor;
+        console.log("Total cost of exercising scaled is ", totalCostOfExercising / scaleFactor);
         IERC20(stableCoin).transferFrom(msg.sender, optionSeller, totalCostOfExercising);
 
         // send the option to the recipient, delete all data
-
         console.log("Sending this ether to bob", option.etherOfCall / 1e18);
         (bool success,) = payable(msg.sender).call{value: option.etherOfCall}("");
         delete options[optionSeller];
-  
+
         require(success);
     }
 
     function claimUnboughtOption() external noReentrant {
         // expired +
         require(options[msg.sender].etherOfCall > 0, "No option or already claimed!");
-        require(block.timestamp > options[msg.sender].expiration, "Option hasn't expired yet");
+        require(block.timestamp >= options[msg.sender].expiration, "Option hasn't expired yet");
 
         uint256 value = options[msg.sender].etherOfCall;
         delete options[msg.sender];
