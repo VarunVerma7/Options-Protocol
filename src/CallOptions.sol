@@ -4,42 +4,10 @@ pragma solidity ^0.8.4;
 import "forge-std/Test.sol";
 
 interface IERC20 {
-    /// @dev Emitted when `value` tokens are moved from one account (`from`) to another (`to`).
-    event Transfer(address indexed from, address indexed to, uint256 value);
-
-    /// @dev Emitted when the allowance of a `spender` for an `owner` is set, where `value`
-    /// is the new allowance.
-    event Approval(address indexed owner, address indexed spender, uint256 value);
-
-    /// @notice Returns the amount of tokens in existence.
-    function totalSupply() external view returns (uint256);
-
-    /// @notice Returns the amount of tokens owned by `account`.
     function balanceOf(address account) external view returns (uint256);
-
-    /// @notice Moves `amount` tokens from the caller's account to `to`.
     function transfer(address to, uint256 amount) external returns (bool);
-
-    /// @notice Returns the remaining number of tokens that `spender` is allowed
-    /// to spend on behalf of `owner`
-    function allowance(address owner, address spender) external view returns (uint256);
-
-    /// @notice Sets `amount` as the allowance of `spender` over the caller's tokens.
-    /// @dev Be aware of front-running risks: https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
     function approve(address spender, uint256 amount) external returns (bool);
-
-    /// @notice Moves `amount` tokens from `from` to `to` using the allowance mechanism.
-    /// `amount` is then deducted from the caller's allowance.
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
-
-    /// @notice Returns the name of the token.
-    function name() external view returns (string memory);
-
-    /// @notice Returns the symbol of the token.
-    function symbol() external view returns (string memory);
-
-    /// @notice Returns the decimals places of the token.
-    function decimals() external view returns (uint8);
 }
 
 // call option: the right to buy an asset at a specific price
@@ -106,7 +74,7 @@ contract CallOptionsContract {
         option.purchased = true;
 
         // send the option creator their premium:
-        require(msg.value == 0.5 ether, "Pay up brah");
+        require(msg.value >= (option.etherOfCall * 3 / 100), "Premium is 3% of the order size");
 
         (bool success,) = payable(seller).call{value: msg.value}("");
         require(success);
@@ -124,20 +92,18 @@ contract CallOptionsContract {
         // send the stable coin to the option creator
         uint256 scaleFactor;
         if (stableCoin == usdc) {
-            scaleFactor = 1e12;
+            scaleFactor = 1e12; // USDC is 6 deicmals
         } else if (stableCoin == usdt) {
-            scaleFactor = 1e10;
+            scaleFactor = 1e10; // USDT is 8 decimals
         } else {
-            scaleFactor = 1e1; // DAI
+            scaleFactor = 1e1; // DAI is 18 decimals
         }
 
         // send the money to the option creator, they have had to approve first
         uint256 totalCostOfExercising = option.buyPerEthPrice * option.etherOfCall / scaleFactor;
-        console.log("Total cost of exercising scaled is ", totalCostOfExercising / scaleFactor);
         IERC20(stableCoin).transferFrom(msg.sender, optionSeller, totalCostOfExercising);
 
         // send the option to the recipient, delete all data
-        console.log("Sending this ether to bob", option.etherOfCall / 1e18);
         (bool success,) = payable(msg.sender).call{value: option.etherOfCall}("");
         delete options[optionSeller];
 
@@ -165,7 +131,9 @@ contract CallOptionsContract {
     }
 
     // Ownership and admin stuff
-    function removeStableCoin(address stableCoin) external onlyOwner {}
+    function removeStableCoin(address stableCoin) external onlyOwner {
+        approvedTokens[stableCoin] = false;
+    }
 
     function addStableCoin(address stableCoin) external onlyOwner {
         approvedTokens[stableCoin] = true;
